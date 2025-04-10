@@ -6,75 +6,78 @@ pipeline {
         IMAGE_NAME = "pavanthumati/java-app"
         REGISTRY = 'docker.io/pavanthumati'
         IMAGE_NAME = 'java-microservice'
-        SONARQUBE_SERVER = 'Sonar-qube'
+        SONARQUBE_SERVER = 'sonar-qube'
     }
-  triggers {
-    githubPush()
-  }
+ pipeline {
+    agent any
 
-  tools {
-    maven 'Maven 3' // Your Jenkins Maven installation
-  }
-
-  stages {
-    stage('Checkout') {
-      steps {
-        checkout scm
-      }
+    environment {
+        SONARQUBE_SERVER = 'sonar-qube'
+        DOCKER_IMAGE = 'pavanthumati/hello-app'
     }
 
-    stage('Build & Test') {
-      steps {
-        sh 'mvn clean install'
-      }
-    }
-
-    stage('SonarQube Analysis') {
-      steps {
-        withSonarQubeEnv("${SONARQUBE_SERVER}") {
-          sh 'mvn sonar:sonar'
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
         }
-      }
-    }
 
-    stage("Quality Gate") {
-      when {
-        not {
-          branch 'feature/*'
+        stage('Build & Test') {
+            steps {
+                sh 'mvn clean package'
+            }
         }
-      }
-      steps {
-        timeout(time: 2, unit: 'MINUTES') {
-          waitForQualityGate abortPipeline: true
-        }
-      }
-    }
 
-    stage('Docker Build & Push') {
-      when {
-        branch 'develop'
-      }
-      steps {
-        script {
-          def imageTag = "${REGISTRY}/${IMAGE_NAME}:${env.BUILD_NUMBER}"
-          sh """
-            docker build -t ${imageTag} .
-            docker push ${imageTag}
-          """
+        stage('SonarQube Analysis') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'develop'
+                    expression { env.BRANCH_NAME.startsWith('feature/') }
+                }
+            }
+            steps {
+                withSonarQubeEnv("${SONARQUBE_SERVER}") {
+                    sh 'mvn sonar:sonar'
+                }
+            }
         }
-      }
-    }
 
-    stage('Deploy to Kubernetes') {
-      when {
-        branch 'develop'
-      }
-      steps {
-        sh """
-          kubectl apply -f manifests/deployment.yaml
-          kubectl apply -f manifests/service.yaml
-        """
-      }
+        stage('Quality Gate') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'develop'
+                }
+            }
+            steps {
+                waitForQualityGate abortPipeline: true
+            }
+        }
+
+        stage('Docker Build & Push') {
+            when {
+                branch 'develop'
+            }
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'DockerHubCredentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh """
+                        docker login -u $DOCKER_USER -p $DOCKER_PASS
+                        docker build -t $DOCKER_IMAGE .
+                        docker push $DOCKER_IMAGE
+                    """
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            when {
+                branch 'develop'
+            }
+            steps {
+                sh 'kubectl apply -f manifests/'
+            }
+        }
     }
-  }
 }
