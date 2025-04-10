@@ -2,18 +2,8 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_CREDENTIALS_ID = 'DockerHubCredentials'
-        IMAGE_NAME = "pavanthumati/java-app"
-        REGISTRY = 'docker.io/pavanthumati'
-        IMAGE_NAME = 'java-microservice'
-        SONARQUBE_SERVER = 'sonar-qube'
-    }
- pipeline {
-    agent any
-
-    environment {
-        SONARQUBE_SERVER = 'sonar-qube'
-        DOCKER_IMAGE = 'pavanthumati/hello-app'
+        IMAGE_NAME = 'pavanthumati/java-hello-app'
+        TAG = 'latest'
     }
 
     stages {
@@ -23,50 +13,24 @@ pipeline {
             }
         }
 
-        stage('Build & Test') {
+        stage('Build with Maven') {
             steps {
                 sh 'mvn clean package'
+                sh 'ls -l target'
+
             }
         }
 
-        stage('SonarQube Analysis') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'develop'
-                    expression { env.BRANCH_NAME.startsWith('feature/') }
-                }
-            }
-            steps {
-                withSonarQubeEnv("${SONARQUBE_SERVER}") {
-                    sh 'mvn sonar:sonar'
-                }
-            }
-        }
-
-        stage('Quality Gate') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'develop'
-                }
-            }
-            steps {
-                waitForQualityGate abortPipeline: true
-            }
-        }
-
-        stage('Docker Build & Push') {
+        stage('Docker Build and Push') {
             when {
                 branch 'develop'
             }
             steps {
-                withCredentials([usernamePassword(credentialsId: 'DockerHubCredentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh """
-                        docker login -u $DOCKER_USER -p $DOCKER_PASS
-                        docker build -t $DOCKER_IMAGE .
-                        docker push $DOCKER_IMAGE
-                    """
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', 'DockerHubCredentials') {
+                        def image = docker.build("${IMAGE_NAME}:${TAG}")
+                        image.push()
+                    }
                 }
             }
         }
@@ -76,7 +40,11 @@ pipeline {
                 branch 'develop'
             }
             steps {
-                sh 'kubectl apply -f manifests/'
+                 withKubeConfig([credentialsId: 'kubeconfig'])
+                {
+                    sh 'kubectl apply -f deployment.yaml'
+                    sh 'kubectl apply -f service.yaml'
+                }
             }
         }
     }
