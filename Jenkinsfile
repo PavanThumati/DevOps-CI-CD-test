@@ -22,9 +22,7 @@ pipeline {
         }
 
         stage('Docker Build and Push') {
-            when {
-                branch 'develop'
-            }
+           
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'DockerHubCredentials') {
@@ -36,9 +34,7 @@ pipeline {
         }
 
         stage('Deploy to Kubernetes') {
-            when {
-                branch 'develop'
-            }
+            
             steps {
                  withKubeConfig([credentialsId: 'kubeconfig'])
                 {
