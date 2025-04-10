@@ -8,8 +8,6 @@ pipeline {
         IMAGE_NAME = 'java-microservice'
         SONARQUBE_SERVER = 'Sonar-qube'
     }
-pipeline {
-  agent any
   triggers {
     githubPush()
   }
@@ -21,7 +19,7 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
-        checkout scm
+        git url: 'https://github.com/PavanThumati/Training.git', branch: 'main'
       }
     }
 
@@ -79,6 +77,4 @@ pipeline {
       }
     }
   }
-}
-
 }
